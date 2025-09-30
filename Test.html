@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Jump Search Visualization with Code Highlight</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+  }
+  .left-panel {
+    flex: 2;
+  }
+  .right-panel {
+    flex: 1;
+    border-left: 2px solid #ccc;
+    padding-left: 20px;
+  }
+  .array-row {
+    display: flex;
+    justify-content: center;
+    margin: 40px 0;
+    position: relative;
+  }
+  .cell {
+    width: 50px; height: 50px;
+    border: 1px solid #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+    border-radius: 6px;
+    transition: background-color 0.4s, border-color 0.4s;
+  }
+  .checked { background-color: #ffd54f; }
+  .found   { background-color: #81c784; border-color: #2e7d32; }
+  .jump    { background-color: #4fc3f7; }
+
+  .pointer {
+    position: absolute;
+    width: 20px; height: 20px;
+    background: #e53935;
+    border-radius: 50%;
+    transition: transform 0.5s ease;
+    pointer-events: none;
+  }
+
+  .controls button, .controls select {
+    margin: 5px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+  pre {
+    background: #f4f4f4;
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  .code-line {
+    padding: 2px 4px;
+    display: block;
+  }
+  .highlight-line {
+    background-color: #ffcdd2;
+  }
+</style>
+</head>
+<body>
+  <div class="left-panel">
+    <h2>Jump Search Visualization</h2>
+
+    <div>
+      <label>Array (comma separated):</label>
+      <input id="arrayInput" value="1,2,3,4,6,8,10,12,14,16,18,20" size="50">
+      <button onclick="init()">Set</button>
+      <button onclick="generateArray()">Generate Array</button>
+      <br><br>
+      <label>Search value x:</label>
+      <input id="xInput" value="6" size="5">
+    </div>
+
+    <div class="array-row" id="arrayRow"></div>
+    <div id="pointer" class="pointer"></div>
+
+    <div class="controls">
+      <button onclick="play()">Play</button>
+      <button onclick="pause()">Pause</button>
+      <button onclick="stepOnce()">Step</button>
+      <button onclick="reset()">Reset</button>
+      <select id="languageSelect" onchange="renderCode()">
+        <option value="python">Python</option>
+        <option value="c">C</option>
+        <option value="java">Java</option>
+      </select>
+    </div>
+
+    <p id="status"></p>
+  </div>
+
+  <div class="right-panel">
+    <h3>Code</h3>
+    <pre id="codeBlock"></pre>
+  </div>
+
+<script>
+let arr = [];
+let x = 0;
+let stepIndex = 0;
+let blockSize = 0;
+let foundIndex = -1;
+let linearIndex = -1;
+let playing = false;
+let timer;
+let currentStep = 0;
+
+const arrayRow = document.getElementById('arrayRow');
+const pointer = document.getElementById('pointer');
+const statusEl = document.getElementById('status');
+const codeBlock = document.getElementById('codeBlock');
+
+const codes = {
+  python: [
+    "def jumpSearch(arr, x):",
+    "    step = int(len(arr)**0.5)",
+    "    prev = 0",
+    "    while arr[min(step, len(arr))-1] < x:",
+    "        prev = step",
+    "        step += int(len(arr)**0.5)",
+    "        if prev >= len(arr):",
+    "            return -1",
+    "    while arr[prev] < x:",
+    "        prev += 1",
+    "        if prev == min(step, len(arr)):",
+    "            return -1",
+    "    if arr[prev] == x:",
+    "        return prev",
+    "    return -1"
+  ],
+  c: [
+    "int jumpSearch(int arr[], int n, int x) {",
+    "    int step = sqrt(n);",
+    "    int prev = 0;",
+    "    while (arr[min(step, n)-1] < x) {",
+    "        prev = step;",
+    "        step += sqrt(n);",
+    "        if (prev >= n) return -1;",
+    "    }",
+    "    while (arr[prev] < x) {",
+    "        prev++;",
+    "        if (prev == min(step, n)) return -1;",
+    "    }",
+    "    if (arr[prev] == x) return prev;",
+    "    return -1;",
+    "}"
+  ],
+  java: [
+    "int jumpSearch(int arr[], int x) {",
+    "    int n = arr.length;",
+    "    int step = (int)Math.floor(Math.sqrt(n));",
+    "    int prev = 0;",
+    "    while (arr[Math.min(step, n)-1] < x) {",
+    "        prev = step;",
+    "        step += (int)Math.floor(Math.sqrt(n));",
+    "        if (prev >= n) return -1;",
+    "    }",
+    "    while (arr[prev] < x) {",
+    "        prev++;",
+    "        if (prev == Math.min(step, n)) return -1;",
+    "    }",
+    "    if (arr[prev] == x) return prev;",
+    "    return -1;",
+    "}"
+  ]
+};
+
+function renderCode(highlightLine=-1){
+  const lang = document.getElementById('languageSelect').value;
+  codeBlock.innerHTML = '';
+  codes[lang].forEach((line, idx)=>{
+    const div = document.createElement('div');
+    div.textContent = line;
+    div.className = 'code-line';
+    if(idx === highlightLine){
+      div.classList.add('highlight-line');
+    }
+    codeBlock.appendChild(div);
+  });
+}
+
+function init(){
+  arr = document.getElementById('arrayInput').value.split(',').map(v => parseInt(v.trim()));
+  x = parseInt(document.getElementById('xInput').value);
+  blockSize = Math.floor(Math.sqrt(arr.length));
+  stepIndex = 0;
+  foundIndex = -1;
+  linearIndex = -1;
+  playing = false;
+  clearInterval(timer);
+  arrayRow.innerHTML = '';
+  arr.forEach((v,i)=>{
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.id = 'cell-'+i;
+    cell.textContent = v;
+    arrayRow.appendChild(cell);
+  });
+  pointer.style.transform = 'translate(-100px,-100px)';
+  statusEl.textContent = '';
+  currentStep = 0;
+  renderCode();
+}
+
+function generateArray(){
+  const n = 12;
+  arr = Array.from({length:n}, (_,i)=> i*2 + 1);
+  document.getElementById('arrayInput').value = arr.join(',');
+  init();
+}
+
+function movePointerToCell(i){
+  const cell = document.getElementById('cell-'+i);
+  if(!cell) return;
+  const rect = cell.getBoundingClientRect();
+  const parentRect = arrayRow.getBoundingClientRect();
+  const x = rect.left - parentRect.left + rect.width/2 - 10;
+  const y = rect.top - parentRect.top - 30;
+  pointer.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function stepOnce(){
+  if(foundIndex >= 0){
+    statusEl.textContent = `Found x=${x} at index ${foundIndex}`;
+    return;
+  }
+  // Jump phase
+  if(linearIndex === -1){
+    let nextIndex = Math.min((stepIndex+1)*blockSize, arr.length)-1;
+    movePointerToCell(nextIndex);
+    document.getElementById('cell-'+nextIndex).classList.add('jump');
+    renderCode(3);
+    if(arr[nextIndex] === x){
+      foundIndex = nextIndex;
+      document.getElementById('cell-'+nextIndex).classList.add('found');
+      statusEl.textContent = `Found x=${x} at index ${foundIndex}`;
+      renderCode(12);
+      return;
+    } else if(arr[nextIndex] > x){
+      linearIndex = stepIndex*blockSize;
+      renderCode(8);
+    } else {
+      stepIndex++;
+    }
+  } else {
+    // Linear scan phase
+    if(linearIndex < arr.length){
+      movePointerToCell(linearIndex);
+      document.getElementById('cell-'+linearIndex).classList.add('checked');
+      renderCode(8);
+      if(arr[linearIndex] === x){
+        foundIndex = linearIndex;
+        document.getElementById('cell-'+linearIndex).classList.add('found');
+        statusEl.textContent = `Found x=${x} at index ${foundIndex}`;
+        renderCode(12);
+        return;
+      }
+      linearIndex++;
+    } else {
+      statusEl.textContent = `x=${x} not found`;
+      playing = false;
+    }
+  }
+}
+
+function play(){
+  if(playing) return;
+  playing = true;
+  timer = setInterval(()=>{
+    stepOnce();
+    if(foundIndex>=0) pause();
+  }, 1000);
+}
+
+function pause(){
+  playing = false;
+  clearInterval(timer);
+}
+
+function reset(){
+  init();
+}
+
+init();
+</script>
+</body>
+</html>
